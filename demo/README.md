@@ -7,7 +7,30 @@ noisy neighbours are switched on one at a time.
 
 *Screenshot taken in simulation mode; the numbers are fake.*
 
-## Run
+## One-click start (Windows + VMware)
+
+One-time setup, in the Proxmox shell (web console › Shell), as root:
+
+```bash
+cd /root && git clone https://github.com/Nota0w0/os-noisy-neighbours.git   # skip if already cloned
+bash /root/os-noisy-neighbours/demo/install-autostart.sh
+```
+
+This installs `open-vm-tools` and a systemd service (`os-demo`) that pulls the latest code and starts
+`demo/demo.py` at every boot. After that, on Windows just double-click **`demo\start-demo.bat`**: it powers on
+the VMware VM in the background (`vmrun … nogui`), asks VMware for the Proxmox IP, waits until the demo page
+answers and opens it in the browser. No console login and no typing in the Proxmox shell.
+`demo\stop-demo.bat` shuts Proxmox down cleanly.
+
+The VM path is set at the top of `start-demo.ps1`
+(default `Documents\Virtual Machines\Ubuntun\Ubuntun.vmx`). If VMware cannot report the IP, put it on
+one line in `demo\pve-ip.txt`.
+
+**After the talk** turn auto-start off, otherwise every boot starts all guests and keeps the victims busy
+(`osproj.sh all` refuses to run while the service is active):
+`bash /root/os-noisy-neighbours/demo/install-autostart.sh --remove`
+
+## Run by hand
 
 On the Proxmox host, as root, after `bash osproj.sh all` has built the guests:
 
@@ -34,15 +57,10 @@ Both victims run `sysbench cpu --threads=2 --report-interval=1 --percentile=95` 
 is the median of the samples taken while no neighbour is busy; it is re-measured after a policy switch
 or with **Re-measure baseline**.
 
-## Suggested script (about 4 minutes)
+## Demo flow
 
-1. Policy `default`, n = 0: both guests at 100 %. Point at the CPU map: the container is confined to two CPUs.
-2. Press `↑` a few times. When a busy neighbour lands on one of the container's CPUs, its throughput drops
-   and its p95 crosses the 2× line, while the VM barely moves; CPU pressure shows the container *waiting*.
-3. Press `0`, switch to `dedicated`, wait for the restart, go back to n = 8: the two curves now coincide.
-   The difference was CPU placement, not the virtualisation technology.
-4. Optional: `float` at n = 8 (container collapses again, VM does not), and **Memory** stress under
-   `dedicated` (both lose the same amount: CPU isolation does not protect memory bandwidth).
+The step-by-step flow for the talk (timings, what to press, what the audience sees) is in the
+[main README](../README.md#live-demo).
 
 ## Limits
 

@@ -528,6 +528,7 @@ case "${1:-}" in
     tail -n 30 -f "$LOG" ;;
   _all)
     exec 9>"$W/lock"; flock -n 9 || { log "another run holds the lock"; exit 1; }
+    systemctl is-active --quiet os-demo.service 2>/dev/null && die "the live demo service is running — stop it first: bash demo/install-autostart.sh --remove"
     mkdir -p "$R/raw"
     do_build || exit 1
     if [ "$PREFLIGHT" = 1 ] && [ ! -f "$R/raw.csv" ]; then do_preflight || exit 1; fi
