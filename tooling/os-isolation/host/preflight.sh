@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# =====================================================================
+#  preflight.sh — DEC-01 / INF-01
+#  Run on the Proxmox VE host as root. Read-only: changes nothing.
+#
+#  Decides whether this host can run the experiment and records the
+#  host specification:
+#     docs/host-spec.md    human-readable inventory (paste into reports)
+#     docs/platform.json   machine-readable verdict, copied into every run
+#
+#  Verdicts:
+#     BARE_METAL        Proxmox runs directly on hardware      -> OK
+#     NESTED_<hyperv>   Proxmox itself is a VM (e.g. VMware)   -> runs, but
+#                       the VM arm pays a nested-virtualisation cost the
+#                       LXC arm does not; disk I/O results are not comparable
+#     BLOCKED_NO_KVM    /dev/kvm missing: KVM VMs cannot start at all
+#  Exit code: 0 = OK or NESTED, 2 = BLOCKED, 1 = not root / not a PVE host
+# =====================================================================
+set -u
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CFG() { python3 "$REPO/host/cfg.py" "$1"; }
+mkdir -p "$REPO/docs"
+
+if [[ $EUID -ne 0 ]]; then echo "preflight: run as root on the Proxmox host" >&2; exit 1; fi
+if ! command -v pveversion >/dev/null 2>&1; then echo "preflight: pveversion not found — this is not a Proxmox VE host" >&2; exit 1; fi
+if ! python3 -c 'import tomllib' 2>/dev/null; then echo "preflight: python3 >= 3.11 needed (Proxmox VE 8 or newer)" >&2; exit 1; fi
+
+STORAGE="$(CFG host.storage)"
+BRIDGE="$(CFG host.bridge)"
+
+# ---------- facts ----------
+PVE="$(pveversion | head -n1)"
+KERNEL="$(uname -r)"
+VIRT="$(systemd-detect-virt 2>/dev/null || true)"; VIRT="${VIRT:-unknown}"
+KVM=false; [[ -c /dev/kvm ]] && KVM=true
+VTX=false; grep -qwE 'vmx|svm' /proc/cpuinfo && VTX=true
+MODEL="$(lscpu | awk -F: '/^Model name/{gsub(/^[ \t]+/,"",$2); print $2; exit}')"
+CPUS="$(nproc --all)"
+TPC="$(lscpu | awk -F: '/^Thread\(s\) per core/{gsub(/ /,"",$2); print $2; exit}')"
+HYBRID=false; [[ -d /sys/devices/cpu_core && -d /sys/devices/cpu_atom ]] && HYBRID=true
+MEM_GB="$(awk '/MemTotal/{printf "%.1f", $2/1048576}' /proc/meminfo)"
+CGFS="$(stat -fc %T /sys/fs/cgroup 2>/dev/null || echo unknown)"
+PSI=false; [[ -r /proc/pressure/cpu && -r /proc/pressure/io ]] && PSI=true
+GOV="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo 'n/a (no cpufreq)')"
+STLINE="$(pvesm status 2>/dev/null | awk -v s="$STORAGE" '$1==s')"
+STTYPE="$(awk '{print $2}' <<<"$STLINE")"; STTYPE="${STTYPE:-missing}"
+STAVAIL_GB="$(awk '{printf "%.0f", $6/1048576}' <<<"$STLINE" 2>/dev/null)"; STAVAIL_GB="${STAVAIL_GB:-?}"
+BRADDR="$(ip -4 -o addr show dev "$BRIDGE" 2>/dev/null | awk '{print $4}' | head -n1)"; BRADDR="${BRADDR:-none}"
+GW="$(ip -4 route show default 2>/dev/null | awk '{print $3; exit}')"; GW="${GW:-none}"
+NBR_CORES="$(CFG neighbour.cores)"
+
+# ---------- verdict ----------
+if [[ $KVM != true ]]; then
+  VERDICT="BLOCKED_NO_KVM"
+elif [[ $VIRT == none ]]; then
+  VERDICT="BARE_METAL"
+else
+  VERDICT="NESTED_${VIRT^^}"
+fi
+
+# ---------- warnings ----------
+WARN=()
+[[ $CGFS != cgroup2fs ]]  && WARN+=("cgroup v2 unified hierarchy not detected ($CGFS)")
+[[ $PSI != true ]]        && WARN+=("PSI not available: add psi=1 to the kernel command line")
+[[ $STTYPE != lvmthin ]]  && WARN+=("storage '$STORAGE' is '$STTYPE', not lvmthin (DEC-02); ZFS adds ARC caching to the I/O path")
+[[ $HYBRID == true ]]     && WARN+=("hybrid P/E-core CPU: expect more run-to-run variance; randomised blocks absorb most of it")
+awk -v m="$MEM_GB" 'BEGIN{exit !(m < 10)}' && WARN+=("only ${MEM_GB} GB RAM; the experiment needs about 8 GB for guests plus the host")
+[[ $STAVAIL_GB != "?" ]] && (( STAVAIL_GB < 80 )) && WARN+=("only ${STAVAIL_GB} GB free on $STORAGE; about 80 GB recommended (victims + 8 neighbours + fio files)")
+[[ $GOV != performance && $GOV != n/a* ]] && WARN+=("CPU governor is '$GOV'; set 'performance' before measuring")
+
+# oversubscription preview: rho(n) = (victim_cores + n*nbr_cores) / CPUs
+VC="$(CFG victim.cores)"
+RHO="$(python3 - "$VC" "$NBR_CORES" "$CPUS" <<'PY'
+import sys
+vc, nc, t = map(int, sys.argv[1:])
+print(" | ".join(f"n={n}: {(vc + n*nc)/t:.2f}" for n in (0, 1, 2, 4, 8)))
+PY
+)"
+
+# ---------- write platform.json ----------
+python3 - "$REPO/docs/platform.json" <<PY
+import json, sys, datetime
+json.dump({
+  "verdict": "$VERDICT", "virt": "$VIRT", "kvm": $( [[ $KVM == true ]] && echo True || echo False ),
+  "cpu_model": """$MODEL""", "cpus": $CPUS, "threads_per_core": "$TPC",
+  "hybrid": $( [[ $HYBRID == true ]] && echo True || echo False ),
+  "mem_gb": $MEM_GB, "pve": """$PVE""", "kernel": "$KERNEL",
+  "storage": "$STORAGE", "storage_type": "$STTYPE", "governor": "$GOV",
+  "nbr_cores": $NBR_CORES,
+  "generated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+}, open(sys.argv[1], "w"), indent=2)
+PY
+
+# ---------- write host-spec.md ----------
+{
+  echo "# Host specification"
+  echo
+  echo "Generated by \`host/preflight.sh\` on $(date '+%Y-%m-%d %H:%M %Z')."
+  echo
+  echo "| Item | Value |"
+  echo "|---|---|"
+  echo "| **Verdict** | **$VERDICT** |"
+  echo "| Virtualisation under Proxmox | $VIRT |"
+  echo "| /dev/kvm present | $KVM |"
+  echo "| VT-x/AMD-V visible to Proxmox | $VTX |"
+  echo "| CPU | $MODEL |"
+  echo "| Logical CPUs (T) | $CPUS (threads/core: ${TPC:-?}) |"
+  echo "| Hybrid P/E cores | $HYBRID |"
+  echo "| RAM | ${MEM_GB} GB |"
+  echo "| Proxmox | $PVE |"
+  echo "| Kernel | $KERNEL |"
+  echo "| cgroup filesystem | $CGFS |"
+  echo "| PSI available | $PSI |"
+  echo "| CPU governor | $GOV |"
+  echo "| Storage | $STORAGE ($STTYPE), ${STAVAIL_GB} GB free |"
+  echo "| Bridge $BRIDGE | $BRADDR (gateway $GW) |"
+  echo "| Neighbour cores (DEC-04) | $NBR_CORES |"
+  echo "| Oversubscription ρ(n) | $RHO |"
+  echo
+  if ((${#WARN[@]})); then
+    echo "## Warnings"; echo
+    for w in "${WARN[@]}"; do echo "- $w"; done
+    echo
+  fi
+  echo "## Raw outputs"; echo
+  echo '```'; lscpu; echo; free -h; echo; pvesm status; echo; pveversion -v | head -n 20; echo '```'
+} > "$REPO/docs/host-spec.md"
+
+# ---------- console summary ----------
+echo "=================================================="
+echo " Verdict      : $VERDICT"
+echo " Virtualised  : $VIRT     /dev/kvm: $KVM"
+echo " CPU          : $MODEL  (T=$CPUS, hybrid=$HYBRID)"
+echo " RAM / storage: ${MEM_GB} GB / $STORAGE=$STTYPE (${STAVAIL_GB} GB free)"
+echo " Bridge       : $BRIDGE $BRADDR  gw $GW"
+echo " Nbr cores    : $NBR_CORES   ρ(n): $RHO"
+for w in "${WARN[@]}"; do echo " WARNING      : $w"; done
+echo "=================================================="
+echo " Wrote docs/host-spec.md and docs/platform.json"
+case "$VERDICT" in
+  BARE_METAL)     exit 0 ;;
+  NESTED_*)       echo " NOTE: nested platform — see README §Platform before trusting VM-vs-LXC numbers."; exit 0 ;;
+  BLOCKED_NO_KVM) echo " BLOCKED: KVM is unavailable, the VM arm cannot run. See README §Platform."; exit 2 ;;
+esac

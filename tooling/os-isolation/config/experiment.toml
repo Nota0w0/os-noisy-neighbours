@@ -1,0 +1,73 @@
+# =====================================================================
+#  Experiment configuration — Performance Isolation under Resource
+#  Contention: KVM VMs vs. LXC containers on Proxmox VE
+#
+#  Freeze this file before the full matrix (ticket CFG-01): change
+#  config_version whenever any value below changes, so every row in
+#  runs.csv records which configuration produced it.
+# =====================================================================
+
+config_version = "1.0-draft"
+
+[host]
+storage          = "local-lvm"   # DEC-02: LVM-thin, same storage for both victims
+template_storage = "local"       # where CT templates live (pveam download target)
+bridge           = "vmbr0"
+
+# The victim VM needs a fixed address so the host can SSH into it.
+# Pick an address OUTSIDE your DHCP range. preflight.sh prints the
+# subnet and gateway of the bridge to help you fill these in.
+# (VMware NAT hands out .128-.254 by default, so .51 is usually safe.)
+vm_ip      = "192.168.150.51"
+cidr       = 24
+gateway    = "192.168.150.2"
+nameserver = "8.8.8.8"
+
+[ids]
+vm           = 201   # victim KVM VM
+ct           = 301   # victim LXC container
+nbr_template = 400   # neighbour template CT
+nbr_first    = 401   # neighbours are 401 .. 401+nbr_count-1
+nbr_count    = 8
+
+[victim]
+cores     = 2
+memory_mb = 2048
+disk_gb   = 20
+
+[neighbour]
+cores      = 0      # 0 = auto: round(host logical CPUs / 4), at least 1 (DEC-04)
+memory_mb  = 512
+disk_gb    = 8
+io_file_gb = 2      # per-neighbour fio target file
+
+[bench]
+duration_s         = 60    # victim benchmark length
+warmup_s           = 15    # neighbours run alone before the victim starts
+cooldown_max_s     = 120   # max wait for the host to go quiet between runs
+cooldown_psi_avg10 = 1.0   # host cpu/io PSI "some avg10" must be below this
+cpu_threads        = 2     # sysbench threads in the victim (= victim cores)
+io_file_gb         = 2     # victim fio file size
+io_iodepth         = 16    # victim fio queue depth
+io_bs              = "4k"
+
+# Neighbour intensity levels (main matrix uses "high"; others are stretch)
+[intensity.high]
+cpu_load   = 100   # stress-ng --cpu-load (%)
+io_iodepth = 32    # neighbour fio iodepth
+
+[intensity.medium]
+cpu_load   = 60
+io_iodepth = 8
+
+[intensity.low]
+cpu_load   = 30
+io_iodepth = 1
+
+[matrix]
+arms        = ["vm", "ct"]
+dims        = ["cpu", "io"]
+neighbours  = [0, 1, 2, 4, 8]
+intensities = ["high"]
+reps        = 5
+seed        = 20261012
