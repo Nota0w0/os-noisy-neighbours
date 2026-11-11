@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # osproj.sh (final) — Performance isolation under contention: KVM VM vs LXC on Proxmox VE
 # Touches ONLY guests: victim-vm(9100) victim-ct(9101) nbr1..nbr8(9111..9118)
-# Usage: bash osproj.sh all | status | summary | clean
+# Usage: bash osproj.sh all | status | summary | clean | policy <default|float|dedicated>
 #   all     : build/check guests (idempotent) -> preflight of every policy -> full matrix
 #             (runs in background, resumable: re-run 'all' to continue after an interruption)
 #   status  : progress
@@ -538,5 +538,11 @@ case "${1:-}" in
     tail -n 8 "$LOG" 2>/dev/null ;;
   summary) do_summary ;;
   clean)   do_clean ;;
-  *) echo "usage: bash $0 all|status|summary|clean"; exit 1 ;;
+  policy)  # used by demo/demo.py: apply one CPU placement policy (neighbours end up running, victims stopped)
+    case "${2:-}" in default|float|dedicated) ;; *) echo "usage: bash $0 policy default|float|dedicated"; exit 1 ;; esac
+    pgrep -f "osproj[.]sh _all" >/dev/null && die "a measurement run is in progress — not changing the policy"
+    check_all_ours
+    apply_policy "$2"
+    log "policy $2 applied" ;;
+  *) echo "usage: bash $0 all|status|summary|clean|policy <default|float|dedicated>"; exit 1 ;;
 esac

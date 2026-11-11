@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noisy neighbours — live demo</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f4f3ef; --surface:#fcfcfb; --line:#e3e1db; --grid:#ecebe6;
+  --text:#0b0b0b; --text2:#52514e; --muted:#8a8984;
+  --vm:#2a78d6; --ct:#eb6834; --load:#6250d6; --warn:#b3261e; --accent:#0b0b0b; --on-accent:#fcfcfb;
+}
+@media (prefers-color-scheme: dark){ :root{
+  color-scheme: dark;
+  --bg:#111110; --surface:#1a1a19; --line:#30302d; --grid:#262624;
+  --text:#f0efec; --text2:#c3c2b7; --muted:#8a8984;
+  --vm:#3987e5; --ct:#d95926; --load:#9085e9; --warn:#e66767; --accent:#f0efec; --on-accent:#1a1a19;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif}
+main{max-width:1500px;margin:0 auto;padding:18px 20px 28px;display:grid;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+h1{font-size:24px;margin:0;letter-spacing:-.01em}
+header p{margin:0;color:var(--text2)}
+.chips{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:13px;color:var(--text2);background:var(--surface)}
+.chip.sim{border-color:var(--warn);color:var(--warn);font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.controls{display:flex;flex-wrap:wrap;gap:14px 30px;align-items:flex-end}
+.group label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{appearance:none;border:0;border-right:1px solid var(--line);background:transparent;color:var(--text);
+  font:inherit;font-size:17px;font-variant-numeric:tabular-nums;padding:9px 0;min-width:46px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg.words button{padding:9px 16px;font-size:15px}
+.seg button:hover{background:var(--grid)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
+.seg button:disabled{opacity:.45;cursor:default}
+.seg button:focus-visible{outline:2px solid var(--vm);outline-offset:-2px}
+.hint{color:var(--muted);font-size:12.5px;margin-top:5px}
+.link{appearance:none;border:0;background:none;color:var(--text2);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;padding:0}
+#banner{display:none;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:600}
+#banner.err{border-color:var(--warn);color:var(--warn)}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.tile h2{margin:0 0 8px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.sw{width:22px;height:4px;border-radius:2px;display:inline-block}
+.tile h2 small{font-weight:400;color:var(--muted)}
+.nums{display:flex;gap:10px 34px;flex-wrap:wrap}
+.num b{display:block;font-size:40px;line-height:1.05;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.num span{color:var(--text2);font-size:13px}
+.num.bad b::after{content:" ▲";font-size:16px;color:var(--warn);vertical-align:middle}
+.sub{color:var(--muted);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
+.charts{position:relative;display:grid;gap:4px}
+.ctitle{display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-top:6px}
+.ctitle b{color:var(--text);font-weight:600}
+canvas{width:100%;display:block}
+#tip{position:absolute;pointer-events:none;display:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;font-size:12.5px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap;font-variant-numeric:tabular-nums;z-index:2}
+#tip i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.cpus{display:grid;gap:6px;grid-template-columns:repeat(var(--ncpu,12),minmax(0,1fr));margin:10px 0 8px}
+.cpu{border:1px solid var(--line);border-radius:8px;height:62px;position:relative;display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;overflow:hidden}
+.cpu .fill{position:absolute;inset:0;background:var(--load)}
+.cpu span{position:relative;text-align:center;line-height:1.25}
+.cpu small{display:block;font-size:11.5px;color:var(--text)}
+.cpu .tag{position:absolute;left:0;right:0;height:6px}
+.cpu .tag.ct{top:0;background:var(--ct)} .cpu .tag.vm{bottom:0;background:var(--vm)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:13px;color:var(--text2)}
+.legend i{display:inline-block;width:18px;height:6px;border-radius:2px;margin-right:6px;vertical-align:middle}
+#placeText{margin:8px 0 0;font-size:14px}
+h3{margin:0;font-size:15px}
+@media (max-width:760px){.tiles{grid-template-columns:1fr}.num b{font-size:32px}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Noisy neighbours, live</h1>
+    <p>One KVM virtual machine and one LXC container run the same CPU benchmark on one Proxmox host.</p>
+    <div class="chips"><span class="chip sim" id="simChip" hidden>SIMULATED DATA</span><span class="chip" id="polChip">policy: –</span><span class="chip" id="nChip">n = 0</span></div>
+  </header>
+
+  <div id="banner" role="status"></div>
+
+  <section class="card controls" aria-label="Controls">
+    <div class="group">
+      <label id="lblN">Busy neighbours</label>
+      <div class="seg" id="segN" role="group" aria-labelledby="lblN"></div>
+      <div class="hint">Keys 0–8, ↑ / ↓ add or remove one</div>
+    </div>
+    <div class="group">
+      <label id="lblS">Neighbours run</label>
+      <div class="seg words" id="segS" role="group" aria-labelledby="lblS">
+        <button data-s="cpu">CPU</button><button data-s="mem">Memory</button><button data-s="io">Disk</button>
+      </div>
+      <div class="hint">stress-ng / fio inside each neighbour</div>
+    </div>
+    <div class="group">
+      <label id="lblP">CPU placement policy</label>
+      <div class="seg words" id="segP" role="group" aria-labelledby="lblP">
+        <button data-p="default" title="Proxmox defaults: each container gets a 2-CPU cpuset chosen by Proxmox">default</button>
+        <button data-p="float" title="No pinning; containers limited by CPU quota (cpulimit)">float</button>
+        <button data-p="dedicated" title="Victims and neighbours on disjoint CPUs">dedicated</button>
+      </div>
+      <div class="hint">Switching restarts the guests (about a minute)</div>
+    </div>
+    <div class="group" style="margin-left:auto"><button class="link" id="rebase">Re-measure baseline</button></div>
+  </section>
+
+  <section class="tiles">
+    <div class="card tile" id="tile-vm"><h2><i class="sw" style="background:var(--vm)"></i>KVM virtual machine <small>own kernel, isolated by the hypervisor</small></h2>
+      <div class="nums"><div class="num thr"><b>–</b><span>throughput vs. alone</span></div><div class="num lat"><b>–</b><span>p95 latency vs. alone</span></div><div class="num psi"><b>–</b><span>waiting for CPU (PSI)</span></div></div><div class="sub">–</div></div>
+    <div class="card tile" id="tile-ct"><h2><i class="sw" style="background:var(--ct)"></i>LXC container <small>shared host kernel, isolated by cgroups</small></h2>
+      <div class="nums"><div class="num thr"><b>–</b><span>throughput vs. alone</span></div><div class="num lat"><b>–</b><span>p95 latency vs. alone</span></div><div class="num psi"><b>–</b><span>waiting for CPU (PSI)</span></div></div><div class="sub">–</div></div>
+  </section>
+
+  <section class="card charts" id="charts">
+    <div class="ctitle"><span><b>Throughput</b> relative to each guest's own baseline (1.0 = running alone)</span><span>last 2 minutes</span></div>
+    <canvas id="c-thr" height="190"></canvas>
+    <div class="ctitle"><span><b>p95 latency</b> relative to baseline, log scale — dashed line is the 2× objective</span></div>
+    <canvas id="c-lat" height="190"></canvas>
+    <div class="ctitle"><span><b>CPU pressure</b> of the guest's cgroup, read on the host: % of time its tasks waited for a CPU</span></div>
+    <canvas id="c-psi" height="150"></canvas>
+    <div id="tip"></div>
+  </section>
+
+  <section class="card">
+    <h3>Where everyone is allowed to run</h3>
+    <div class="cpus" id="cpus"></div>
+    <div class="legend"><span><i style="background:var(--ct)"></i>top edge: container victim may run here</span><span><i style="background:var(--vm)"></i>bottom edge: VM victim may run here</span><span><i style="background:var(--load)"></i>shading: busy neighbours allowed on this CPU (darker = more)</span></div>
+    <p id="placeText">–</p>
+  </section>
+</main>
+
+<script>
+const WINDOW = 120, $ = s => document.querySelector(s);
+const st = {since: 0, samples: [], events: [], base: {}, n: 0, stress: 'cpu', policy: '', busy: null, error: null, place: null, now: 0, hover: null};
+const V = [['vm', 'VM', '--vm'], ['ct', 'CT', '--ct']];
+
+// ---------- controls
+const segN = $('#segN');
+for (let i = 0; i <= 8; i++) { const b = document.createElement('button'); b.textContent = i; b.dataset.n = i; segN.append(b); }
+async function post(path, body) {
+  try { const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        if (!r.ok) console.warn(path, await r.text()); } catch (e) { console.warn(e); }
+  poll();
+}
+const setN = n => { if (st.busy) return; n = Math.max(0, Math.min(8, n)); st.n = n; paintControls(); post('/api/neighbours', {n, stress: st.stress}); };
+segN.addEventListener('click', e => { if (e.target.dataset.n !== undefined) setN(+e.target.dataset.n); });
+$('#segS').addEventListener('click', e => { const s = e.target.dataset.s; if (!s || st.busy) return; st.stress = s; paintControls(); post('/api/neighbours', {n: st.n, stress: s}); });
+$('#segP').addEventListener('click', e => { const p = e.target.dataset.p; if (!p || st.busy || p === st.policy) return;
+  if (confirm(`Switch CPU placement to "${p}"?\nNeighbour load stops and all guests restart (about a minute).`)) post('/api/policy', {policy: p}); });
+$('#rebase').addEventListener('click', () => post('/api/rebaseline', {}));
+addEventListener('keydown', e => { if (e.target.closest('input,textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^[0-8]$/.test(e.key)) setN(+e.key); else if (e.key === 'ArrowUp' || e.key === '+') { e.preventDefault(); setN(st.n + 1); }
+  else if (e.key === 'ArrowDown' || e.key === '-') { e.preventDefault(); setN(st.n - 1); } });
+function paintControls() {
+  for (const b of segN.children) { b.setAttribute('aria-pressed', +b.dataset.n === st.n); b.disabled = !!st.busy; }
+  for (const b of $('#segS').children) { b.setAttribute('aria-pressed', b.dataset.s === st.stress); b.disabled = !!st.busy; }
+  for (const b of $('#segP').children) { b.setAttribute('aria-pressed', b.dataset.p === st.policy); b.disabled = !!st.busy; }
+  $('#nChip').textContent = `n = ${st.n}` + (st.n ? ` · ${({cpu: 'CPU', mem: 'memory', io: 'disk'})[st.stress]} stress` : '');
+  $('#polChip').textContent = 'policy: ' + (st.policy || '–');
+}
+
+// ---------- data
+async function poll() {
+  let d; try { d = await (await fetch('/api/state?since=' + st.since)).json(); } catch (e) { showBanner('Lost connection to demo.py', true); return; }
+  if (d.seq < st.since) { st.samples = []; }                       // server restarted
+  st.since = d.seq; st.samples.push(...d.samples);
+  const cut = d.now - WINDOW - 5; while (st.samples.length && st.samples[0].t < cut) st.samples.shift();
+  Object.assign(st, {events: d.events, base: d.base, policy: d.policy, busy: d.busy, error: d.error, place: d.placement, now: d.now});
+  if (!d.queued) { st.n = d.n; st.stress = d.stress; }
+  $('#simChip').hidden = !d.simulated;
+  showBanner(d.busy || d.error, !d.busy && !!d.error);
+  paintControls(); paintTiles(); paintCpus(); draw();
+}
+function showBanner(text, err) { const b = $('#banner'); b.style.display = text ? 'block' : 'none'; b.textContent = text || ''; b.classList.toggle('err', !!err); }
+const rel = (s, v, k) => { const b = st.base[v]; return s[v] && b ? s[v][k] / b[k] : null; };
+const fmtX = x => x == null ? '–' : '×' + (x >= 10 ? x.toFixed(0) : x.toFixed(1));
+
+function paintTiles() {
+  const last = st.samples[st.samples.length - 1];
+  for (const [v] of V) {
+    const t = $('#tile-' + v), s = last && last[v], b = st.base[v];
+    const thr = last ? rel(last, v, 'eps') : null, lat = last ? rel(last, v, 'p95') : null;
+    t.querySelector('.thr b').textContent = thr == null ? '–' : Math.round(thr * 100) + '%';
+    t.querySelector('.lat b').textContent = fmtX(lat);
+    t.querySelector('.lat').classList.toggle('bad', lat != null && lat >= 2);
+    t.querySelector('.psi b').textContent = s && s.psi != null ? Math.round(s.psi) + '%' : '–';
+    t.querySelector('.sub').textContent = !s ? 'no data from this guest right now' :
+      `${Math.round(s.eps).toLocaleString('en-US')} events/s · p95 ${s.p95.toFixed(2)} ms` +
+      (b ? ` · baseline ${Math.round(b.eps).toLocaleString('en-US')} events/s, ${b.p95.toFixed(2)} ms` : ' · measuring baseline with no neighbours…');
+  }
+}
+
+function paintCpus() {
+  const p = st.place; if (!p || !p.ncpu) return;
+  const el = $('#cpus'); el.style.setProperty('--ncpu', p.ncpu);
+  const busy = Array(p.ncpu).fill(0); p.nbr.slice(0, st.n).forEach(c => c.forEach(i => busy[i]++));
+  const max = Math.max(1, ...busy);
+  el.innerHTML = busy.map((k, i) => `<div class="cpu" title="CPU ${i}: ${k} busy neighbour(s) allowed here">` +
+    `<div class="fill" style="opacity:${k ? (0.12 + 0.5 * k / Math.max(max, 4)).toFixed(2) : 0}"></div>` +
+    (p.ct.includes(i) ? '<div class="tag ct"></div>' : '') + (p.vm.includes(i) ? '<div class="tag vm"></div>' : '') +
+    `<span>CPU ${i}${k ? `<small>${k} busy</small>` : ''}</span></div>`).join('');
+  const share = c => c.filter(i => busy[i] > 0).length, list = c => c.length === p.ncpu ? 'all CPUs' : (c.length > 1 ? 'CPUs ' : 'CPU ') + c.join(', ');
+  const line = (name, c) => c.length ? `${name} may run on ${list(c)}; ${st.n ? `${share(c)} of ${c.length} shared with busy neighbours` : 'no neighbour is busy'}.` : `${name}: not running.`;
+  $('#placeText').textContent = line('Container victim', p.ct) + '  ' + line('VM victim', p.vm);
+}
+
+// ---------- charts (canvas; one shared time axis)
+const CH = [
+  {id: 'c-thr', get: (s, v) => rel(s, v, 'eps'), min: 0, max: 1.15, ticks: [0, .25, .5, .75, 1], fmt: x => x.toFixed(2).replace(/0$/, '')},
+  {id: 'c-lat', get: (s, v) => rel(s, v, 'p95'), log: true, min: .7, max: 40, ticks: [1, 2, 4, 8, 16, 32], fmt: x => '×' + x, slo: 2},
+  {id: 'c-psi', get: (s, v) => s[v] ? s[v].psi : null, min: 0, max: 100, ticks: [0, 25, 50, 75, 100], fmt: x => x + '%', last: true},
+];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function draw() {
+  const now = st.now, t0 = now - WINDOW;
+  for (const c of CH) {
+    const cv = document.getElementById(c.id), dpr = devicePixelRatio || 1, W = cv.clientWidth, H = +cv.getAttribute('height');
+    cv.style.height = H + 'px'; if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const L = 50, R = 46, T = 14, B = c.last ? 22 : 8, pw = W - L - R, ph = H - T - B;
+    const x = t => L + (t - t0) / WINDOW * pw;
+    const y = c.log ? v => T + ph * (1 - (Math.log(Math.min(Math.max(v, c.min), c.max)) - Math.log(c.min)) / (Math.log(c.max) - Math.log(c.min)))
+                    : v => T + ph * (1 - (Math.min(Math.max(v, c.min), c.max) - c.min) / (c.max - c.min));
+    c._x = x; c._L = L; c._R = W - R;
+    g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle';
+    for (const tk of c.ticks) { g.strokeStyle = css('--grid'); g.lineWidth = 1; g.beginPath(); g.moveTo(L, y(tk) + .5); g.lineTo(W - R, y(tk) + .5); g.stroke();
+      g.fillStyle = css('--muted'); g.textAlign = 'right'; g.fillText(c.fmt(tk), L - 8, y(tk)); }
+    if (c.slo) { g.strokeStyle = css('--text2'); g.setLineDash([5, 4]); g.beginPath(); g.moveTo(L, y(c.slo) + .5); g.lineTo(W - R, y(c.slo) + .5); g.stroke(); g.setLineDash([]); }
+    if (c.last) { g.textAlign = 'center'; g.fillStyle = css('--muted'); for (let s = 0; s <= WINDOW; s += 30) g.fillText(s === 0 ? 'now' : `−${s} s`, x(now - s), H - 9); }
+    // event markers
+    g.textAlign = 'left'; let free = Infinity;                 // newest label wins when two would collide
+    for (const e of [...st.events].reverse()) { if (e.t < t0) break; const ex = Math.round(x(e.t)) + .5;
+      g.strokeStyle = css('--line'); g.lineWidth = 1; g.beginPath(); g.moveTo(ex, T - 2); g.lineTo(ex, T + ph); g.stroke();
+      if (c === CH[0]) { const w = g.measureText(e.label).width;
+        if (ex + 4 + w < free - 6) { g.fillStyle = css('--text2'); g.fillText(e.label, ex + 4, T - 6); free = ex; } } }
+    // series
+    let any = false;
+    for (const [v, name, col] of V) {
+      g.strokeStyle = css(col); g.lineWidth = 2; g.lineJoin = 'round'; g.beginPath(); let pen = false, lastPt = null, pt = null;
+      for (const s of st.samples) { const val = s.t >= t0 ? c.get(s, v) : null;
+        if (val == null || (pt && s.t - pt > 3.5)) { pen = false; if (val == null) continue; }
+        const px = x(s.t), py = y(val); pen ? g.lineTo(px, py) : g.moveTo(px, py); pen = true; pt = s.t; lastPt = [px, py]; any = true; }
+      g.stroke();
+      if (lastPt) { g.fillStyle = css(col); g.beginPath(); g.arc(lastPt[0], lastPt[1], 4, 0, 7); g.fill();
+        g.strokeStyle = css('--surface'); g.lineWidth = 2; g.stroke();
+        g.fillStyle = css('--text'); g.textAlign = 'left'; g.font = '600 12px system-ui, sans-serif'; g.fillText(name, lastPt[0] + 9, lastPt[1] + (v === 'vm' ? -7 : 7)); g.font = '12px system-ui, sans-serif'; }
+    }
+    if (!any) { g.fillStyle = css('--muted'); g.textAlign = 'center'; g.fillText(c.id === 'c-psi' ? 'waiting for data…' : 'measuring the baseline with no neighbours…', L + pw / 2, T + ph / 2); }
+    if (st.hover != null) { const hx = Math.round(x(st.hover)) + .5; g.strokeStyle = css('--text2'); g.lineWidth = 1; g.beginPath(); g.moveTo(hx, T); g.lineTo(hx, T + ph); g.stroke(); }
+  }
+}
+// hover: crosshair on all three charts + one tooltip
+const box = $('#charts'), tip = $('#tip');
+box.addEventListener('mousemove', e => {
+  const c = CH[0], r = document.getElementById(c.id).getBoundingClientRect(), mx = e.clientX - r.left;
+  if (!c._x || mx < c._L || mx > c._R || !st.samples.length) { st.hover = null; tip.style.display = 'none'; draw(); return; }
+  const t = st.now - WINDOW + (mx - c._L) / (c._R - c._L) * WINDOW;
+  const s = st.samples.reduce((a, b) => Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a);
+  st.hover = s.t;
+  tip.innerHTML = `<b>${Math.round(st.now - s.t)} s ago · n = ${s.n}</b><br>` + V.map(([v, name, col]) => {
+    const a = rel(s, v, 'eps'), l = rel(s, v, 'p95');
+    return `<i style="background:var(${col})"></i>${name}: ` + (s[v] ? `${a == null ? Math.round(s[v].eps) + ' ev/s' : Math.round(a * 100) + '%'} · p95 ${l == null ? s[v].p95.toFixed(2) + ' ms' : fmtX(l)} · PSI ${s[v].psi == null ? '–' : Math.round(s[v].psi) + '%'}` : 'no data');
+  }).join('<br>');
+  const br = box.getBoundingClientRect(); tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX - br.left + 14, br.width - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY - br.top + 14) + 'px';
+  draw();
+});
+box.addEventListener('mouseleave', () => { st.hover = null; tip.style.display = 'none'; draw(); });
+addEventListener('resize', draw);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+paintControls(); poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>

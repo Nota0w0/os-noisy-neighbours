@@ -18,6 +18,7 @@ Slowdowns are explained with host-side kernel counters (cgroup v2 PSI) instead o
 osproj.sh                      experiment harness used for all results here (bash, runs on the Proxmox host)
 results/nested-2026-10-19/     raw.csv (long format), summary.csv, placement.tsv (CPU placement log), meta.txt (platform + guest configs)
 analysis/                      load.py + plot.py -> fig1_cpu.png, fig2_mem_io.png, fig3_psi.png
+demo/                          live demo: web page with neighbour / stress / policy controls (see demo/README.md)
 tooling/os-isolation/          alternative Python harness (randomised blocks, 1 Hz sampler, report generator);
                                tested in simulation only, not used for the results above
 ```
@@ -36,7 +37,10 @@ tooling/os-isolation/          alternative Python harness (randomised blocks, 1 
 Host: Proxmox VE 9.2.2 on 12 vCPUs / 16 GB, nested in VMware Workstation 17 on an Intel i5-14400 (Windows 11).
 
 Run it (on the Proxmox host, as root): `bash osproj.sh all` · `bash osproj.sh status` · `bash osproj.sh summary` ·
+`bash osproj.sh policy <default|float|dedicated>` ·
 `bash osproj.sh clean` (destroys only the project's own guests, VMIDs 9100, 9101, 9111–9118, after checking their names).
+
+Live demo: `python3 demo/demo.py` on the Proxmox host, or `DEMO_SIM=1 python3 demo/demo.py` anywhere ([details](demo/README.md)).
 
 Reproduce the figures: `pip install pandas numpy scipy matplotlib && python3 analysis/plot.py`
 
