@@ -2,7 +2,7 @@
 # Run it by double-clicking start-demo.bat (same folder). Stop with stop-demo.bat.
 # Requires demo/install-autostart.sh to have been run once on the Proxmox host.
 param(
-  [string]$Vmx   = "$env:USERPROFILE\Documents\Virtual Machines\Ubuntun\Ubuntun.vmx",
+  [string]$Vmx   = '',       # path of the Proxmox VM's .vmx; default: first line of vmx-path.txt, else the path below
   [string]$Vmrun = "${env:ProgramFiles(x86)}\VMware\VMware Workstation\vmrun.exe",
   [int]$Port     = 8080,
   [switch]$Console,          # also open the Proxmox web console (https://<ip>:8006)
@@ -11,8 +11,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $ipFile = Join-Path $PSScriptRoot 'pve-ip.txt'
 function Say($m) { Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m) }
+if (-not $Vmx) {
+  $vmxFile = Join-Path $PSScriptRoot 'vmx-path.txt'
+  if (Test-Path $vmxFile) { $Vmx = (Get-Content $vmxFile -TotalCount 1).Trim().Trim('"') }
+  else { $Vmx = "$env:USERPROFILE\Documents\Virtual Machines\Ubuntun\Ubuntun.vmx" }
+}
 if (-not (Test-Path $Vmrun)) { throw "vmrun.exe not found at $Vmrun (is VMware Workstation installed?)" }
-if (-not (Test-Path $Vmx))   { throw "VM not found: $Vmx  (edit the path at the top of start-demo.ps1)" }
+if (-not (Test-Path $Vmx))   { throw "VM not found: $Vmx  (put the .vmx path on one line in demo\vmx-path.txt)" }
 
 $running = (& $Vmrun -T ws list) -match [regex]::Escape($Vmx)
 if ($Stop) {

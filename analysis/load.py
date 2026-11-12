@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 import pandas as pd, numpy as np
 DATA = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / 'results' / 'nested-2026-10-19' / 'raw.csv'
+if DATA.is_dir(): DATA = DATA / 'raw.csv'          # a results directory works too
 r=pd.read_csv(DATA)
 r=r[r.metric!='done']
 w=r.pivot_table(index=['policy','rep','victim','stress','n'],columns='metric',values='value').reset_index()

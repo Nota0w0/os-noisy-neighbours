@@ -267,10 +267,19 @@ class PveBackend:
                     ["pct", "exec", str(NBR_IDS[k - 1]), "--", "bash", "-c", self._stress_cmd(stress)],
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def _dedicated_env(self) -> dict[str, str]:
+        """CPU sets for `dedicated`. osproj.sh measures one victim at a time and gives both the same
+        two CPUs; here both run at once, so each victim gets its own pair and the neighbours the rest."""
+        n, c = self.ncpu, VICT_CORES
+        if n < 2 * c + 2:                                   # too few CPUs to split: keep osproj.sh defaults
+            return {}
+        return {"DED_CT": f"{n - c}-{n - 1}", "DED_VM": f"{n - 2 * c}-{n - c - 1}", "SHARED": f"0-{n - 2 * c - 1}"}
+
     def apply_policy(self, pol: str) -> None:
         self.stop_loops()
         self.clear_noise()
-        out = subprocess.run(["bash", str(OSPROJ), "policy", pol], capture_output=True, text=True, timeout=600)
+        out = subprocess.run(["bash", str(OSPROJ), "policy", pol], capture_output=True, text=True, timeout=600,
+                             env={**os.environ, **self._dedicated_env()})
         if out.returncode:
             raise RuntimeError(f"osproj.sh policy {pol} failed: {(out.stdout + out.stderr).strip()[-300:]}")
         self._psi_prev = {}
@@ -300,8 +309,7 @@ class SimBackend:
         elif self.pol == "float":
             self.ct, self.vm, self.nbr = allc, allc, [allc] * 8
         else:
-            ded = allc[-2:]
-            self.ct, self.vm, self.nbr = ded, ded, [allc[:-2]] * 8
+            self.ct, self.vm, self.nbr = allc[-2:], allc[-4:-2], [allc[:-4]] * 8   # as PveBackend._dedicated_env
 
     def prepare(self) -> None:
         pass

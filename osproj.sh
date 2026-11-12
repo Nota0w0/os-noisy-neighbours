@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # osproj.sh (final) — Performance isolation under contention: KVM VM vs LXC on Proxmox VE
 # Touches ONLY guests: victim-vm(9100) victim-ct(9101) nbr1..nbr8(9111..9118)
-# Usage: bash osproj.sh all | status | summary | clean | policy <default|float|dedicated>
+# Usage: bash osproj.sh all | status | summary | export [label] | clean | policy <default|float|dedicated>
 #   all     : build/check guests (idempotent) -> preflight of every policy -> full matrix
 #             (runs in background, resumable: re-run 'all' to continue after an interruption)
 #   status  : progress
 #   summary : recompute results_final/summary.csv
+#   export  : copy the finished run into this repository as results/<label>-<date>/ (default label: hostname)
 #   clean   : destroy ONLY the 10 project guests
 set -u
 SELF=$(readlink -f "$0")
@@ -15,7 +16,7 @@ mkdir -p "$W"
 
 # ---------------- parameters ----------------
 VMID_VM=9100; VMID_CT=9101; NBR_BASE=9110          # nbrK -> 9110+K
-STORE=local-lvm
+STORE=${STORE:-local-lvm}                          # Proxmox storage for guest disks (e.g. local-zfs on a ZFS install)
 VICT_CORES=2; VICT_MEM=2048; VICT_DISK=16
 NBR_CORES=2;  NBR_MEM=1024;  NBR_DISK=8
 REPS=${REPS:-3}                                    # repetitions (each rep = every policy x both victims)
@@ -29,6 +30,10 @@ PKGS_N="fio stress-ng"
 NCPU=${NCPU:-$(nproc)}
 DED=${DED:-"$((NCPU-2))-$((NCPU-1))"}              # victim CPUs under 'dedicated'
 SHARED=${SHARED:-"0-$((NCPU-3))"}                  # neighbour CPUs under 'dedicated'
+# The measurement runs one victim at a time, so both victims use the same DED CPUs. The live demo runs
+# both victims at once and overrides these two so that they do not compete with each other.
+DED_VM=${DED_VM:-$DED}                             # victim-vm CPUs under 'dedicated'
+DED_CT=${DED_CT:-$DED}                             # victim-ct CPUs under 'dedicated'
 
 PVE_IP=$(ip -4 -br addr show vmbr0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)
 PFX=${PVE_IP%.*}
@@ -188,8 +193,32 @@ deactivate_all(){
 }
 
 # ---------------- build (idempotent) ----------------
+cpu_maxfreqs(){ cat /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_max_freq 2>/dev/null | sort -n | uniq -c | awk '{printf "%s%dx%.1fGHz", (NR>1?" ":""), $1, $2/1e6}'; }
+# Everything a reader needs to compare this host with another one (written by 'export').
+platform_info(){
+  echo "== host"; hostname; pveversion 2>/dev/null; uname -r
+  echo "== virtualisation (none = bare metal)"; systemd-detect-virt 2>/dev/null || true
+  echo "== cpu"; lscpu 2>/dev/null | grep -E '^(Model name|CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|Socket\(s\)|Hypervisor vendor|L3 cache)'
+  echo "smt: $(cat /sys/devices/system/cpu/smt/active 2>/dev/null || echo NA)"
+  echo "max frequency per CPU (two groups = P- and E-cores): $(cpu_maxfreqs)"
+  echo "governor: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo NA)"
+  echo "== cpu topology"; lscpu -e=CPU,CORE,SOCKET,MAXMHZ 2>/dev/null || lscpu -e 2>/dev/null
+  echo "== memory"; free -h | head -2
+  echo "== disks"; lsblk -d -o NAME,ROTA,SIZE,MODEL 2>/dev/null
+  echo "== storage"; pvesm status 2>/dev/null
+  echo "== parameters"; echo "NCPU=$NCPU DED=$DED SHARED=$SHARED STORE=$STORE REPS=$REPS BT=$BT NLIST=$NLIST STRESSES=$STRESSES POLICIES=$POLICIES"
+}
+check_host(){
+  [ -e /dev/kvm ] || die "/dev/kvm is missing: no hardware virtualisation here, victim-vm cannot run. Bare metal: enable VT-x/AMD-V in the BIOS. Nested in VMware: enable 'Virtualize Intel VT-x/EPT' and turn the Windows hypervisor off (tools/switch-hypervisor.bat)."
+  pvesm status 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$STORE" || die "storage '$STORE' not found (pvesm status) — run with STORE=<name>"
+  [ "$NCPU" -ge 6 ] || die "need at least 6 CPUs (found $NCPU)"
+  [ "$(cpu_maxfreqs | wc -w)" -gt 1 ] && log "WARN: CPUs differ in max frequency ($(cpu_maxfreqs)) — P/E-core host. 'dedicated' uses CPUs $DED for the victim; set DED=<two P-cores, not SMT siblings> and SHARED=<the rest> if those are E-cores (see lscpu -e)."
+  return 0
+}
+
 do_build(){
-  log "== BUILD/CHECK  (pve=$PVE_IP gw=$GW dns=$DNS ncpu=$NCPU ded=$DED shared=$SHARED)"
+  log "== BUILD/CHECK  (pve=$PVE_IP gw=$GW dns=$DNS ncpu=$NCPU ded=$DED shared=$SHARED store=$STORE virt=$(systemd-detect-virt 2>/dev/null))"
+  check_host
   [ -s "$KEY" ] || ssh-keygen -q -t ed25519 -N '' -f "$KEY" -C osproj
   local t k id; t=$(get_tmpl); log "template: $t"
 
@@ -275,13 +304,13 @@ apply_policy(){
         pct set "$id" --cpulimit "$c" >/dev/null || die "pct set cpulimit $id"
         if pct config "$id" | grep -q '^cores:'; then pct set "$id" --delete cores >/dev/null || die "pct delete cores $id"; fi
         if [ "$pol" = dedicated ]; then
-          if [ "$id" = "$VMID_CT" ]; then cfg_cpuset "$id" "$DED"; else cfg_cpuset "$id" "$SHARED"; fi
+          if [ "$id" = "$VMID_CT" ]; then cfg_cpuset "$id" "$DED_CT"; else cfg_cpuset "$id" "$SHARED"; fi
         else cfg_cpuset "$id" ""; fi ;;
       *) die "unknown policy $pol" ;;
     esac
   done
   if [ "$pol" = dedicated ]; then
-    qm set "$VMID_VM" --affinity "$DED" >/dev/null || die "qm set affinity"
+    qm set "$VMID_VM" --affinity "$DED_VM" >/dev/null || die "qm set affinity"
   elif qm config "$VMID_VM" | grep -q '^affinity:'; then
     qm set "$VMID_VM" --delete affinity >/dev/null || die "qm delete affinity"
   fi
@@ -292,8 +321,8 @@ apply_policy(){
 }
 enforce_victim(){  # pol v — verify placement after every victim (re)start
   if [ "$1" = dedicated ]; then
-    if [ "$2" = ct ]; then verify_ct_cpus "$VMID_CT" "$DED"
-    else cpus_eq "$(vm_cpus)" "$DED" || die "placement check victim-vm: affinity=$(vm_cpus) expected=$DED"; fi
+    if [ "$2" = ct ]; then verify_ct_cpus "$VMID_CT" "$DED_CT"
+    else cpus_eq "$(vm_cpus)" "$DED_VM" || die "placement check victim-vm: affinity=$(vm_cpus) expected=$DED_VM"; fi
   fi
   return 0
 }
@@ -538,12 +567,26 @@ case "${1:-}" in
     echo "configs done: $( [ -f "$R/raw.csv" ] && grep -c ',done,' "$R/raw.csv" || echo 0 )"
     tail -n 8 "$LOG" 2>/dev/null ;;
   summary) do_summary ;;
+  export)  # copy a finished run into the repository (results/<label>-<date>/) so it can be committed and compared
+    label=${2:-$(hostname)}
+    case "$label" in ""|*[!A-Za-z0-9._-]*) die "label may only contain letters, digits, '.', '_' and '-'" ;; esac
+    [ -f "$R/raw.csv" ] || die "no results in $R — run 'bash $0 all' first"
+    pgrep -f "osproj[.]sh _all" >/dev/null && die "the run is still in progress (bash $0 status)"
+    want=0; for rep in $(seq "$REPS"); do for pol in $POLICIES; do for v in vm ct; do want=$((want + $(cfg_list "$pol" "$rep" "$v" | wc -l))); done; done; done
+    have=$(grep -c ',done,' "$R/raw.csv")
+    [ "$have" = "$want" ] || log "WARN: $have of $want configurations are done — exporting an incomplete run"
+    dest=$(dirname "$SELF")/results/$label-$(date -d "@$(tail -n 1 "$R/raw.csv" | cut -d, -f1)" +%F)
+    mkdir -p "$dest"; do_summary > "$dest/summary.txt"
+    cp "$R/raw.csv" "$R/summary.csv" "$R/placement.tsv" "$R/meta.txt" "$dest/" || die "copy failed"
+    platform_info > "$dest/platform.txt" 2>&1
+    log "exported $have configurations to $dest"
+    echo "next: git add results/$(basename "$dest") && git commit -m 'Results: $label' && git push" ;;
   clean)   do_clean ;;
   policy)  # used by demo/demo.py: apply one CPU placement policy (neighbours end up running, victims stopped)
     case "${2:-}" in default|float|dedicated) ;; *) echo "usage: bash $0 policy default|float|dedicated"; exit 1 ;; esac
     pgrep -f "osproj[.]sh _all" >/dev/null && die "a measurement run is in progress — not changing the policy"
     check_all_ours
     apply_policy "$2"
-    log "policy $2 applied" ;;
-  *) echo "usage: bash $0 all|status|summary|clean|policy <default|float|dedicated>"; exit 1 ;;
+    log "policy $2 applied$([ "$2" = dedicated ] && echo " (victim-vm=$DED_VM victim-ct=$DED_CT neighbours=$SHARED)")" ;;
+  *) echo "usage: bash $0 all|status|summary|export [label]|clean|policy <default|float|dedicated>"; exit 1 ;;
 esac

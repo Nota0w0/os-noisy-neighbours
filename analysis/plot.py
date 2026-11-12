@@ -1,21 +1,24 @@
 import os
 _here = os.path.dirname(os.path.abspath(__file__))
 exec(open(os.path.join(_here, 'load.py')).read())
-os.chdir(_here)
+# usage: plot.py                         -> pilot data, figures written next to this script
+#        plot.py results/<dir> ["note"]  -> that run, figures written into results/<dir>/
+os.chdir(DATA.parent if len(sys.argv) > 1 else _here)
 import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
 plt.rcParams.update({'font.size':10,'axes.spines.top':False,'axes.spines.right':False,'axes.edgecolor':'#8a8984','axes.labelcolor':'#52514e','xtick.color':'#52514e','ytick.color':'#52514e'})
 C={'vm':'#2a78d6','ct':'#eb6834'}; M={'vm':'o','ct':'s'}; LAB={'vm':'KVM VM','ct':'LXC CT'}
 POL=[('default','default (Proxmox defaults)'),('float','float (cpulimit, no cpuset)'),('dedicated','dedicated (disjoint cpusets)')]
-NS=[0,2,4,8]
 L=w[~w.stress.isin(['post'])].copy()
+NS=sorted({0,*L.n.astype(int).unique()})   # neighbour counts present in the data (was hard-coded [0,2,4,8])
 def series(pol,v,stress,col):
     rows=[]
     for n in NS:
         d=L[(L.policy==pol)&(L.victim==v)&(((L.stress==stress)&(L.n==n))|((L.stress=='none')&(n==0)))]
         x=d[col]; rows.append((n,x.mean(),x.min(),x.max()))
     return np.array(rows)
-note="Proxmox VE 9.2 nested in VMware Workstation (i5-14400, 12 vCPU) · 3 reps × 15 s · line = mean, band = min–max · pilot data, not report-grade"
+note=(sys.argv[2] if len(sys.argv) > 2 else DATA.parent.name if len(sys.argv) > 1 else
+      "Proxmox VE 9.2 nested in VMware Workstation (i5-14400, 12 vCPU) · 3 reps × 15 s · pilot data, not report-grade") + " · line = mean, band = min–max"
 # fig1 cpu
 fig,ax=plt.subplots(2,3,figsize=(12,6.6),sharex=True)
 for j,(pol,title) in enumerate(POL):

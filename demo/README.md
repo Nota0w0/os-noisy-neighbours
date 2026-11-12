@@ -12,7 +12,7 @@ noisy neighbours are switched on one at a time.
 One-time setup, in the Proxmox shell (web console › Shell), as root:
 
 ```bash
-cd /root && git clone https://github.com/Nota0w0/os-noisy-neighbours.git   # skip if already cloned
+git clone <this repository's URL> /root/os-noisy-neighbours   # skip if already cloned; any path works
 bash /root/os-noisy-neighbours/demo/install-autostart.sh
 ```
 
@@ -22,13 +22,14 @@ the VMware VM in the background (`vmrun … nogui`), asks VMware for the Proxmox
 answers and opens it in the browser. No console login and no typing in the Proxmox shell.
 `demo\stop-demo.bat` shuts Proxmox down cleanly.
 
-The VM path is set at the top of `start-demo.ps1`
-(default `Documents\Virtual Machines\Ubuntun\Ubuntun.vmx`). If VMware cannot report the IP, put it on
+The path of the Proxmox VM differs per computer: put the full path of its `.vmx` file on one line in
+`demo\vmx-path.txt` (not committed), or pass `-Vmx <path>`. Without either, the default
+`Documents\Virtual Machines\Ubuntun\Ubuntun.vmx` is used. If VMware cannot report the IP, put it on
 one line in `demo\pve-ip.txt`.
 
 **After the talk** turn auto-start off, otherwise every boot starts all guests and keeps the victims busy
 (`osproj.sh all` refuses to run while the service is active):
-`bash /root/os-noisy-neighbours/demo/install-autostart.sh --remove`
+`bash <repo>/demo/install-autostart.sh --remove`
 
 ## Run by hand
 
@@ -48,7 +49,7 @@ Standard library only. `Ctrl+C` stops the neighbour load and the benchmarks; the
 |---|---|
 | **Busy neighbours** 0–8 | how many neighbour containers run a stress workload (keys `0`–`8`, `↑`/`↓`) |
 | **Neighbours run** | CPU (`stress-ng --cpu`), memory bandwidth (`stress-ng --stream`) or disk (`fio` randrw) |
-| **CPU placement policy** | `default` = Proxmox defaults · `float` = no pinning, CPU quota only · `dedicated` = victims and neighbours on disjoint CPUs. Switching calls `osproj.sh policy <name>` and restarts the guests (about a minute) |
+| **CPU placement policy** | `default` = Proxmox defaults · `float` = no pinning, CPU quota only · `dedicated` = each victim on its own two CPUs, neighbours on the rest (with 12 CPUs: container 10–11, VM 8–9, neighbours 0–7; the measurement in `osproj.sh` runs one victim at a time and uses 10–11 for both). Switching calls `osproj.sh policy <name>` and restarts the guests (about a minute) |
 | Tiles | each victim's throughput and p95 latency relative to its own baseline, plus cgroup CPU pressure |
 | Charts | the same three quantities over the last two minutes; vertical lines mark every change |
 | CPU map | which CPUs each victim may use and how many busy neighbours share each CPU |
