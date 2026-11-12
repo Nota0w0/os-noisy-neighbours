@@ -1,0 +1,45 @@
+== host
+pve
+pve-manager/9.2.2/b9984c6d90a4bd80 (running kernel: 7.0.2-6-pve)
+7.0.2-6-pve
+== virtualisation (none = bare metal)
+vmware
+== cpu
+CPU(s):                                  12
+Model name:                              Intel(R) Core(TM) i5-14400
+Thread(s) per core:                      1
+Core(s) per socket:                      12
+Socket(s):                               1
+Hypervisor vendor:                       VMware
+L3 cache:                                20 MiB (1 instance)
+smt: 0
+max frequency per CPU (two groups = P- and E-cores): 
+governor: NA
+== cpu topology
+CPU CORE SOCKET MAXMHZ
+  0    0      0      -
+  1    1      0      -
+  2    2      0      -
+  3    3      0      -
+  4    4      0      -
+  5    5      0      -
+  6    6      0      -
+  7    7      0      -
+  8    8      0      -
+  9    9      0      -
+ 10   10      0      -
+ 11   11      0      -
+== memory
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       2.3Gi        12Gi        29Mi       1.5Gi        13Gi
+== disks
+NAME ROTA  SIZE MODEL
+sda     1  150G VMware Virtual S
+sr0     0 1024M VMware Virtual SATA CDRW Drive
+sr1     1  1.6G VMware Virtual SATA CDRW Drive
+== storage
+Name             Type     Status     Total (KiB)      Used (KiB) Available (KiB)        %
+local             dir     active        48448196         5641848        40312908   11.65%
+local-lvm     lvmthin     active        79425536        24661628        54763907   31.05%
+== parameters
+NCPU=12 DED=10-11 SHARED=0-9 STORE=local-lvm REPS=5 BT=15 NLIST=1 2 4 8 STRESSES=cpu mem io POLICIES=default float dedicated
