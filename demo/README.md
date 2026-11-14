@@ -86,6 +86,19 @@ In this boot Proxmox gave the container CPUs 1 and 2; neighbour 2 is allowed on 
 | [09-float-n4](screenshots/09-float-n4.png) | `float`, n = 4 (left half of the chart: the earlier n = 8) | 92 %, ×1.7 | 89 %, ×1.7, 5 % |
 | [10-float-n8](screenshots/10-float-n8.png) | `float`, n = 8 | 96 %, ×1.1 | 42 %, ×13, 48 % |
 
+**For slides:** `screenshots/slides/` has each screenshot cut into `_tiles` (the two number cards),
+`_charts` (the three time-series charts) and `_cpumap` (the CPU map), plus ready-made combinations:
+
+| file | use |
+|---|---|
+| `A-effect_default-n2_tiles+throughput.png` | the effect: one neighbour on the container's CPU halves it, the VM does not move |
+| `B-cause_cpumap_n1-vs-n2.png` | the cause: CPU map at n = 1 (no overlap) vs n = 2 (CPU 2 shared) |
+| `C-policies-n8_tiles.png` | default / dedicated / float at n = 8, number cards stacked |
+| `D1-timeline_default-n1-n2-n4_throughput.png` | throughput over time, n = 1 → 2 (collapse) → 4 |
+| `D2-timeline_default-n4-n8_throughput.png` | throughput over time, n = 4 → 8 (left part: still n = 2) |
+
+Regenerate with `python3 demo/crop_slides.py demo/screenshots demo/screenshots/slides` (needs Pillow).
+
 What they show: under `default` the container collapses as soon as one busy neighbour shares one of its CPUs
 (n = 2 here, not n = 1); with disjoint CPUs (`dedicated`) both guests end at about 0.9 with ~1.7–1.8× p95; with
 no pinning (`float`) the container holds at n = 4 and collapses at n = 8 while the VM does not — the same
