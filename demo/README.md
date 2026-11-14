@@ -3,9 +3,10 @@
 A web page that shows, second by second, how a KVM virtual machine and an LXC container react while
 noisy neighbours are switched on one at a time.
 
-![demo page (simulated data)](screenshot-simulated.png)
+![demo page on the host: default policy, n = 8](screenshots/05-default-n8.png)
 
-*Screenshot taken in simulation mode; the numbers are fake.*
+*Real run on the nested Proxmox host (2026-11-14), `default` policy, 8 busy neighbours. All screenshots are
+listed under [Screenshots from the host](#screenshots-from-the-host).*
 
 ## One-click start (Windows + VMware)
 
@@ -63,11 +64,37 @@ or with **Re-measure baseline**.
 The step-by-step flow for the talk (timings, what to press, what the audience sees) is in the
 [main README](../README.md#live-demo).
 
+## Screenshots from the host
+
+Taken on 2026-11-14 on the nested Proxmox host (Proxmox VE 9.2.2 inside VMware Workstation, so **not
+report-grade**), CPU stress unless noted. Both victims run at the same time here, unlike `osproj.sh`, and the
+page shows **p95** (the measurement harness reports p99). The tiles show one 1-second sample; shots 05, 08, 09
+and 10 were retaken until that sample was close to the median of the last ~30 s (the first attempts caught
+atypical seconds), the others were checked by eye against their charts, which show the full last 2 minutes.
+In this boot Proxmox gave the container CPUs 1 and 2; neighbour 2 is allowed on CPU 2.
+
+| file | state | VM (throughput, p95) | container (throughput, p95, CPU PSI) |
+|---|---|---|---|
+| [01-default-n0](screenshots/01-default-n0.png) | `default`, n = 0 | 101 %, ×1.0 | 100 %, ×1.0, 0 % |
+| [02-default-n1](screenshots/02-default-n1.png) | `default`, n = 1 (no overlap with the container) | 100 %, ×1.0 | 100 %, ×1.0, 0 % |
+| [03-default-n2](screenshots/03-default-n2.png) | `default`, n = 2 (neighbour 2 lands on CPU 2) | 97 %, ×1.1 | 49 %, ×12, 100 % |
+| [04-default-n4](screenshots/04-default-n4.png) | `default`, n = 4 | 96 %, ×1.2 | 66 %, ×1.8, 57 % |
+| [05-default-n8](screenshots/05-default-n8.png) | `default`, n = 8 | 95 %, ×1.1 | 56 %, ×11, 40 % |
+| [06-default-n8-memory](screenshots/06-default-n8-memory.png) | `default`, n = 8, memory stress | 93 %, ×1.2 | 44 %, ×13, 53 % |
+| [07-dedicated-n0](screenshots/07-dedicated-n0.png) | `dedicated`, n = 0 (VM on 8–9, container on 10–11) | 95 %, ×1.1 | 98 %, ×1.0, 0 % |
+| [08-dedicated-n8](screenshots/08-dedicated-n8.png) | `dedicated`, n = 8 (neighbours on 0–7) | 91 %, ×1.7 | 86 %, ×1.8, 9 % |
+| [09-float-n4](screenshots/09-float-n4.png) | `float`, n = 4 (left half of the chart: the earlier n = 8) | 92 %, ×1.7 | 89 %, ×1.7, 5 % |
+| [10-float-n8](screenshots/10-float-n8.png) | `float`, n = 8 | 96 %, ×1.1 | 42 %, ×13, 48 % |
+
+What they show: under `default` the container collapses as soon as one busy neighbour shares one of its CPUs
+(n = 2 here, not n = 1); with disjoint CPUs (`dedicated`) both guests end at about 0.9 with ~1.7–1.8× p95; with
+no pinning (`float`) the container holds at n = 4 and collapses at n = 8 while the VM does not — the same
+pattern as in the measured runs (`results/nested-v2-2026-11-13/REPORT.md`).
+
 ## Limits
 
 - Only the project's guests are touched (VMIDs 9100, 9101, 9111–9118; names are checked at start).
 - The page has no login. It accepts only the fixed choices above, but run it on a network you trust.
 - Under `default`, which CPUs the container gets is decided by Proxmox at start, so step 2 may need more
   or fewer neighbours from one run to the next. Check the CPU map before the talk.
-- Tested end to end in simulation mode only; the Proxmox code path reuses the commands of `osproj.sh`
-  but has not been run on a host yet. Rehearse once on the real host.
+- Run end to end on the nested Proxmox host on 2026-11-14 (screenshots above); not yet on bare metal.

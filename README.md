@@ -26,7 +26,7 @@ Slowdowns are explained with host-side kernel counters (cgroup v2 PSI) instead o
 | Nested v2 run (5 reps, n = 1, 2, 4, 8) | ✅ done (Nov 13) | 420 configurations, 0 missing values — `results/nested-v2-2026-11-13/` (+ `REPORT.md`) |
 | n = 1 level | ✅ | in the v2 run |
 | 5 repetitions | ✅ | in the v2 run; n* now interpolated with a min–max interval |
-| Live demo | ✅ built, ⚠️ not yet rehearsed on the host | `demo/` — tested in simulation mode only |
+| Live demo | ✅ run on the nested host (Nov 14) | `demo/` — screenshots in `demo/screenshots/` |
 | Bare-metal Proxmox run | ❌ not started | needed for report-grade numbers and for the VM-vs-CT disk question |
 | p95 metric | ❌ | the harness records p99 only; n* is defined on p99 |
 | Throttling (`cpu.stat`), `io.stat`, VM steal time | ❌ not recorded | the proposal asks which of throttling / pressure / steal explains each slowdown |
@@ -81,7 +81,9 @@ The demo shows, live, the main pilot finding: under Proxmox defaults a container
 busy neighbours land on its CPUs, while the VM barely moves, and the difference disappears when CPUs are
 assigned explicitly. Full details: [demo/README.md](demo/README.md).
 
-![demo page (simulated data)](demo/screenshot-simulated.png)
+![demo page on the nested host: default policy, n = 8](demo/screenshots/05-default-n8.png)
+
+All ten screenshots (default / dedicated / float, n = 0–8) with their numbers: [demo/README.md](demo/README.md#screenshots-from-the-host).
 
 **Setup used in the talk.** The desktop that hosts VMware + Proxmox is operated through Chrome Remote Desktop.
 The demo page is opened in a browser *on that desktop* (the VMware NAT network is only reachable from there),

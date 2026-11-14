@@ -156,7 +156,9 @@ tooling/os-isolation/          另一套 Python 實驗框架（隨機區組、1 
 demo 現場展示 pilot 的主要結論：在 Proxmox 預設設定下，忙碌的鄰居一落到容器的 CPU 上，容器就明顯
 變慢，VM 幾乎不受影響；明確指定 CPU 之後，這個差距就消失。完整說明見 [demo/README.md](demo/README.md)。
 
-![demo 網頁（模擬資料）](demo/screenshot-simulated.png)
+![demo 網頁（nested 主機實測，default，n = 8）](demo/screenshots/05-default-n8.png)
+
+10 張實測截圖（default／dedicated／float，n = 0–8）和對應數字見 [demo/README.md](demo/README.md#screenshots-from-the-host)。
 
 **簡報時的配置。** 跑 VMware + Proxmox 的桌機透過 Chrome 遠端桌面操作。demo 網頁是在*那台桌機上*的
 瀏覽器開啟（VMware 的 NAT 網路只有那台機器連得到），所以觀眾看到的是遠端桌面的畫面。Proxmox 主機上
